@@ -27,6 +27,8 @@ struct avbox_dvdio
 	int blocking;
 	int playing;
 	int waiting;
+	int still_frame;
+	int have_input;
 
 	uint8_t *buf;
 	uint8_t mem[DVD_VIDEO_LB_LEN];
@@ -37,9 +39,46 @@ struct avbox_dvdio
 	void *callback_context;
 	avbox_dvdio_dvdnavcb callback;
 	uint8_t *avio_ctx_buffer;
+	struct avbox_syncarg still_frame_arg;
 	struct avbox_player *player;
+	struct avbox_rect highlight;
+	struct avbox_object *object;
 	pthread_mutex_t lock;
 };
+
+
+static void
+avbox_dvdio_process_menus(struct avbox_dvdio * const inst)
+{
+	pci_t *pci;
+	int32_t btnid;
+
+	pci = dvdnav_get_current_nav_pci(inst->dvdnav);
+	dvdnav_get_current_nav_dsi(inst->dvdnav);
+	dvdnav_get_current_highlight(inst->dvdnav, &btnid);
+
+	if (pci->hli.hl_gi.btn_ns > (btnid - 1)) {
+		btni_t *btn = &(pci->hli.btnit[btnid - 1]);
+		if (inst->highlight.x != btn->x_start ||
+			inst->highlight.y != btn->y_end ||
+			inst->highlight.w != (btn->x_end - btn->x_start)) {
+			inst->highlight.x = btn->x_start;
+			inst->highlight.y = btn->y_end;
+			inst->highlight.w = btn->x_end - btn->x_start;
+			inst->highlight.h = 5;
+			avbox_player_sendctl(inst->player,
+				AVBOX_PLAYERCTL_UPDATE, NULL);
+		}
+	} else {
+		if (inst->highlight.x != 0 || inst->highlight.y != 0) {
+			if (inst->highlight.x || inst->highlight.y) {
+				inst->highlight.x = inst->highlight.y = 0;
+				avbox_player_sendctl(inst->player,
+					AVBOX_PLAYERCTL_UPDATE, NULL);
+			}
+		}
+	}
+}
 
 
 /**
@@ -155,17 +194,16 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 			if (!inst->playing) {
 				dvdnav_still_skip(inst->dvdnav);
 			} else {
-				struct avbox_syncarg arg;
 				dvdnav_still_event_t * const e = (dvdnav_still_event_t*) inst->buf;
 
 				DEBUG_PRINT(LOG_MODULE, "DVDNAV_STILL_FRAME");
 
-				avbox_syncarg_init(&arg, (void*) ((intptr_t)e->length));
-				inst->waiting = 1;
-				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_STILL_FRAME, &arg);
-				avbox_syncarg_wait(&arg);
+				avbox_syncarg_init(&inst->still_frame_arg, (void*) ((intptr_t)e->length));
+				inst->still_frame = 1;
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_STILL_FRAME, &inst->still_frame_arg);
+				avbox_syncarg_wait(&inst->still_frame_arg);
 				dvdnav_still_skip(inst->dvdnav);
-				inst->waiting = 0;
+				inst->still_frame = 0;
 			}
 			break;
 		}
@@ -216,9 +254,15 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 						res_x, res_y);
 				}
 
-				/* set title and duration */
-				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_TITLE, (void*)title);
-				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_DURATION, &duration);
+				/* set title */
+				avbox_syncarg_init(&arg, (void*) title);
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_TITLE, &arg);
+				avbox_syncarg_wait(&arg);
+
+				/* set duration */
+				avbox_syncarg_init(&arg, &duration);
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_DURATION, &arg);
+				avbox_syncarg_wait(&arg);
 
 				inst->waiting = 0;
 			}
@@ -255,6 +299,20 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 			DEBUG_PRINT(LOG_MODULE, "DVDNAV_SPU_STREAM_CHANGE");
 			break;
 		}
+		case DVDNAV_NAV_PACKET:
+		{
+			int64_t pos;
+			struct avbox_syncarg arg;
+
+			avbox_dvdio_process_menus(inst);
+			pos = (dvdnav_get_current_time(inst->dvdnav) / (90L * 1000L)) * 1000L * 1000L;
+
+			/* update position */
+			avbox_syncarg_init(&arg, &pos);
+			avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_POSITION, &arg);
+			avbox_syncarg_wait(&arg);
+			break;
+		}
 		default:
 			if (!inst->playing) {
 				switch (event) {
@@ -281,6 +339,91 @@ end:
 }
 
 
+static int
+avbox_dvdio_control(void * context, struct avbox_message * msg)
+{
+	struct avbox_dvdio * const inst = context;
+
+	switch (avbox_message_id(msg)) {
+	case AVBOX_MESSAGETYPE_INPUT:
+	{
+		struct avbox_input_message *event =
+			avbox_message_payload(msg);
+
+		switch (event->msg) {
+		case MBI_EVENT_CONTEXT:
+		{
+			DEBUG_PRINT(LOG_MODULE, "Menu pressed. Activating.");
+			dvdnav_menu_call(inst->dvdnav, DVD_MENU_Root);
+			if (inst->still_frame) {
+				avbox_syncarg_return(&inst->still_frame_arg, NULL);
+			}
+			break;
+		}
+		case MBI_EVENT_ENTER:
+		{
+			DEBUG_PRINT(LOG_MODULE, "Enter pressed. Activating.");
+			dvdnav_button_activate(inst->dvdnav,
+				dvdnav_get_current_nav_pci(inst->dvdnav));
+			if (inst->still_frame) {
+				avbox_syncarg_return(&inst->still_frame_arg, NULL);
+			}
+			break;
+		}
+		case MBI_EVENT_BACK:
+		{
+			/* if we're in a menu go up one level */
+			if (!dvdnav_is_domain_vts(inst->dvdnav) && !dvdnav_is_domain_fp(inst->dvdnav)) {
+				DEBUG_PRINT(LOG_MODULE, "BACK pressed. Going one level up.");
+				dvdnav_go_up(inst->dvdnav);
+			}
+
+			/* continue from still frame */
+			if (inst->still_frame) {
+				avbox_syncarg_return(&inst->still_frame_arg, NULL);
+			}
+
+			/* let the shell process the event */
+			return AVBOX_DISPATCH_CONTINUE;
+		}
+		case MBI_EVENT_ARROW_UP:
+		{
+			dvdnav_upper_button_select(inst->dvdnav,
+				dvdnav_get_current_nav_pci(inst->dvdnav));
+			break;
+		}
+		case MBI_EVENT_ARROW_DOWN:
+		{
+			dvdnav_lower_button_select(inst->dvdnav,
+				dvdnav_get_current_nav_pci(inst->dvdnav));
+			break;
+		}
+		case MBI_EVENT_ARROW_LEFT:
+		{
+			dvdnav_left_button_select(inst->dvdnav,
+				dvdnav_get_current_nav_pci(inst->dvdnav));
+			break;
+		}
+		case MBI_EVENT_ARROW_RIGHT:
+		{
+			dvdnav_right_button_select(inst->dvdnav,
+				dvdnav_get_current_nav_pci(inst->dvdnav));
+			break;
+		}
+		default:
+			return AVBOX_DISPATCH_CONTINUE;
+		}
+
+		avbox_dvdio_process_menus(inst);
+		avbox_input_eventfree(event);
+		return AVBOX_DISPATCH_OK;
+	}
+	default:
+		abort();
+	}
+}
+
+
 /**
  * Start playing the DVD
  */
@@ -293,6 +436,13 @@ avbox_dvdio_play(struct avbox_dvdio * const inst)
 	dvdnav_top_pg_search(inst->dvdnav);
 	/* dvdnav_menu_call(inst->dvdnav, DVD_MENU_Root); */
 	pthread_mutex_unlock(&inst->lock);
+
+	/* grab input */
+	if (avbox_input_grab(inst->object) == -1) {
+		abort();
+	} else {
+		inst->have_input = 1;
+	}
 }
 
 
@@ -303,6 +453,19 @@ AVIOContext *
 avbox_dvdio_avio(struct avbox_dvdio * const inst)
 {
 	return inst->avio_ctx;
+}
+
+
+/**
+ * Gets the coordinates of the highlighted item.
+ */
+struct avbox_rect*
+avbox_dvdio_highlight(struct avbox_dvdio * const inst)
+{
+	if (inst->highlight.x == 0 && inst->highlight.y == 0) {
+		return NULL;
+	}
+	return &inst->highlight;
 }
 
 
@@ -454,9 +617,17 @@ avbox_dvdio_open(const char * const path, struct avbox_player * const player,
 	inst->blocking = 0;
 	inst->playing = 0;
 	inst->waiting = 0;
+	inst->still_frame = 0;
 	inst->player = player;
 	inst->callback = callback;
 	inst->callback_context = callback_context;
+
+	/* create a dispatch object */
+	if ((inst->object = avbox_object_new(avbox_dvdio_control, inst)) == NULL) {
+		LOG_PRINT_ERROR("Could not create dispatch object");
+		goto end;
+	}
+
 	ret = inst;
 
 end:
@@ -485,7 +656,15 @@ avbox_dvdio_close(struct avbox_dvdio * const inst)
 	ASSERT(inst != NULL);
 	ASSERT(inst->avio_ctx != NULL);
 	ASSERT(inst->dvdnav != NULL);
+
+	if (inst->have_input) {
+		avbox_input_release(inst->object);
+	}
+
 	inst->closed = 1;
+	if (inst->still_frame) {
+		avbox_syncarg_return(&inst->still_frame_arg, NULL);
+	}
 }
 
 

@@ -21,6 +21,12 @@ avbox_dvdio_open(const char * const path,
 	struct avbox_player * const player,
 	avbox_dvdio_dvdnavcb callback, void * callback_context);
 
+/**
+ * Gets the coordinates of the highlighted item.
+ */
+struct avbox_rect*
+avbox_dvdio_highlight(struct avbox_dvdio * const inst);
+
 
 /**
  * Reopen a closed dvdio stream.
