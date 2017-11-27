@@ -2933,7 +2933,6 @@ avbox_player_control(void * context, struct avbox_message * msg)
 				inst->still_frame = 0;
 			}
 
-
 			avbox_syncarg_return(arg, NULL);
 			break;
 		}
@@ -2980,6 +2979,37 @@ avbox_player_control(void * context, struct avbox_message * msg)
 					inst->still_frame_waiter = arg;
 				}
 			}
+			break;
+		}
+		case AVBOX_PLAYERCTL_RESET_CLOCK:
+		{
+			struct avbox_syncarg * const arg = ctlmsg->data;
+
+			if (inst->getmastertime == avbox_player_getaudiotime) {
+				/* drain the audio stream and reset it's clock */
+				avbox_audiostream_pause(inst->audio_stream);
+				avbox_audiostream_setclock(inst->audio_stream, 0);
+				avbox_audiostream_resume(inst->audio_stream);
+				inst->audio_time_set = 0;
+			} else {
+				/* reset video clock */
+				avbox_stopwatch_reset(inst->video_time, 0);
+				avbox_stopwatch_start(inst->video_time);
+			}
+
+			avbox_syncarg_return(arg, NULL);
+			break;
+		}
+		case AVBOX_PLAYERCTL_SET_TITLE:
+		{
+			const char * const title = ctlmsg->data;
+			avbox_player_settitle(inst, title);
+			break;
+		}
+		case AVBOX_PLAYERCTL_SET_DURATION:
+		{
+			const int64_t *duration = ctlmsg->data;
+			inst->state_info.duration = *duration;
 			break;
 		}
 #ifdef  ENABLE_DVD
@@ -3065,132 +3095,6 @@ avbox_player_control(void * context, struct avbox_message * msg)
 				}
 			}
 
-			/* signal the DVDNAV state machine to continue */
-			avbox_syncarg_return(arg, NULL);
-			break;
-		}
-		case AVBOX_PLAYERCTL_DVD_VTS_CHANGE:
-		{
-			struct avbox_syncarg * const arg = ctlmsg->data;
-			int32_t current_title, current_part;
-			uint32_t width, height;
-			uint64_t *part_times = NULL, duration = 0;
-			const char *title = NULL;
-			dvdnav_t *dvdnav;
-			dvdnav_vts_change_event_t * const e = avbox_syncarg_data(arg);
-
-			DEBUG_VPRINT(LOG_MODULE, "AVBOX_PLAYERCTL_DVD_VTS_CHANGE (old=%i|new=%i)",
-				e->old_vtsN, e->new_vtsN);
-
-			(void) e;
-
-			ASSERT(inst != NULL);
-			ASSERT(inst->dvdio != NULL);
-			ASSERT(arg != NULL);
-
-			dvdnav = avbox_dvdio_dvdnav(inst->dvdio);
-			ASSERT(dvdnav != NULL);
-
-			/* flush the audio pipeline */
-			while (!avbox_player_flush(inst, AVBOX_PLAYER_FLUSH_ALL)) {
-				usleep(1000L);
-			}
-
-			if (inst->getmastertime == avbox_player_getaudiotime) {
-				/* drain the audio stream and reset it's clock */
-				avbox_audiostream_pause(inst->audio_stream);
-				avbox_audiostream_setclock(inst->audio_stream, 0);
-				avbox_audiostream_resume(inst->audio_stream);
-				inst->audio_time_set = 0;
-			} else {
-				/* reset video clock */
-				avbox_stopwatch_reset(inst->video_time, 0);
-				avbox_stopwatch_start(inst->video_time);
-			}
-
-
-			if (dvdnav_get_title_string(dvdnav, &title) != DVDNAV_STATUS_OK) {
-				LOG_PRINT_ERROR("Could not get dvd title!");
-				goto vts_change_end;
-			}
-
-			if (dvdnav_get_video_resolution(dvdnav, &width, &height) != 0) {
-				LOG_PRINT_ERROR("Could not get VTS resolution!");
-				goto vts_change_end;
-			}
-
-			DEBUG_VPRINT(LOG_MODULE, "VTS Title: %s", title);
-			DEBUG_VPRINT(LOG_MODULE, "VTS Resolution: %ix%i", width, height);
-
-			if (dvdnav_current_title_info(dvdnav, &current_title, &current_part) != DVDNAV_STATUS_OK) {
-				LOG_VPRINT_ERROR("Could not get DVD title info: %s",
-					dvdnav_err_to_string(dvdnav));
-				goto vts_change_end;
-			}
-
-			(void) dvdnav_describe_title_chapters(dvdnav, current_title,
-				&part_times, &duration);
-			if (part_times != NULL) {
-				free(part_times);
-			}
-
-			inst->state_info.duration =
-				(duration / (90L * 1000L)) * 1000L * 1000L;
-
-			/* update player state */
-			avbox_player_settitle(inst, title);
-
-vts_change_end:
-			/* signal the DVDNAV state machine to continue */
-			avbox_syncarg_return(arg, NULL);
-			break;
-		}
-		case AVBOX_PLAYERCTL_DVD_CELL_CHANGE:
-		{
-			int32_t tt, ptt;
-			uint32_t pos, len;
-			struct avbox_syncarg * const arg = ctlmsg->data;
-			dvdnav_t *dvdnav = avbox_dvdio_dvdnav(inst->dvdio);
-
-			DEBUG_PRINT(LOG_MODULE, "DVDNAV_CELL_CHANGE");
-
-			dvdnav_current_title_info(dvdnav, &tt, &ptt);
-			dvdnav_get_position(dvdnav, &pos, &len);
-
-			DEBUG_VPRINT(LOG_MODULE, "Cell change: Title %d, Chapter %d", tt, ptt);
-			DEBUG_VPRINT(LOG_MODULE, "At pos %d/%d", pos, len);
-
-			/* signal the DVDNAV state machine to continue */
-			avbox_syncarg_return(arg, NULL);
-			break;
-		}
-		case AVBOX_PLAYERCTL_DVD_SPU_CLUT_CHANGE:
-		{
-			struct avbox_syncarg * const arg = ctlmsg->data;
-
-			DEBUG_PRINT(LOG_MODULE, "AVBOX_PLAYERCTL_DVD_SPU_CLUT_CHANGE");
-
-			/* signal the DVDNAV state machine to continue */
-			avbox_syncarg_return(arg, NULL);
-			break;
-		}
-		case AVBOX_PLAYERCTL_DVD_SPU_STREAM_CHANGE:
-		{
-			struct avbox_syncarg * const arg = ctlmsg->data;
-
-			DEBUG_PRINT(LOG_MODULE, "AVBOX_PLAYERCTL_DVD_SPU_STREAM_CHANGE");
-
-			/* signal the DVDNAV state machine to continue */
-			avbox_syncarg_return(arg, NULL);
-			break;
-		}
-		case AVBOX_PLAYERCTL_DVD_HIGHLIGHT:
-		{
-			struct avbox_syncarg * const arg = ctlmsg->data;
-			dvdnav_highlight_event_t * const event = avbox_syncarg_data(arg);
-			DEBUG_VPRINT(LOG_MODULE, "Hightlight button: %i",
-				event->buttonN);
-			(void) event;
 			/* signal the DVDNAV state machine to continue */
 			avbox_syncarg_return(arg, NULL);
 			break;

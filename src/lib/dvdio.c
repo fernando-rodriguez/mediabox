@@ -133,11 +133,19 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 
 				DEBUG_PRINT(LOG_MODULE, "DVDNAV_WAIT");
 
-				avbox_syncarg_init(&arg, NULL);
 				inst->waiting = 1;
+
+				/* flush */
+				avbox_syncarg_init(&arg, NULL);
 				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_FLUSH, &arg);
 				avbox_syncarg_wait(&arg);
 				dvdnav_wait_skip(inst->dvdnav);
+
+				/* reset clock */
+				avbox_syncarg_init(&arg, NULL);
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_RESET_CLOCK, &arg);
+				avbox_syncarg_wait(&arg);
+
 				inst->waiting = 0;
 			}
 			break;
@@ -159,6 +167,92 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 				dvdnav_still_skip(inst->dvdnav);
 				inst->waiting = 0;
 			}
+			break;
+		}
+		case DVDNAV_VTS_CHANGE:
+		{
+			if (inst->playing) {
+				struct avbox_syncarg arg;
+				const char *title;
+				int32_t current_title, current_part;
+				uint64_t *part_times = NULL, duration = 0;
+				uint32_t res_x, res_y;
+
+				DEBUG_PRINT(LOG_MODULE, "DVDNAV_VTS_CHANGE");
+
+				inst->waiting = 1;
+
+				/* flush player */
+				avbox_syncarg_init(&arg, NULL);
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_FLUSH, &arg);
+				avbox_syncarg_wait(&arg);
+
+				/* reset clock */
+				avbox_syncarg_init(&arg, NULL);
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_RESET_CLOCK, &arg);
+				avbox_syncarg_wait(&arg);
+
+				if (dvdnav_get_title_string(inst->dvdnav, &title) != DVDNAV_STATUS_OK) {
+					title = "Unknown";
+				}
+
+				if (dvdnav_current_title_info(inst->dvdnav, &current_title, &current_part) != DVDNAV_STATUS_OK) {
+					LOG_VPRINT_ERROR("Could not get DVD title info: %s",
+						dvdnav_err_to_string(inst->dvdnav));
+					duration = 0;
+				} else {
+
+					(void) dvdnav_describe_title_chapters(inst->dvdnav, current_title,
+						&part_times, &duration);
+					if (part_times != NULL) {
+						free(part_times);
+					}
+				}
+
+				if (dvdnav_get_video_resolution(inst->dvdnav, &res_x, &res_y) != 0) {
+					LOG_PRINT_ERROR("Could not get VTS resolution!");
+				} else {
+					DEBUG_VPRINT(LOG_MODULE, "Video resolution: %dx%d",
+						res_x, res_y);
+				}
+
+				/* set title and duration */
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_TITLE, (void*)title);
+				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_DURATION, &duration);
+
+				inst->waiting = 0;
+			}
+			break;
+		}
+		case DVDNAV_CELL_CHANGE:
+		{
+			if (inst->playing) {
+				int32_t tt, ptt;
+				uint32_t pos, len;
+				DEBUG_PRINT(LOG_MODULE, "DVDNAV_CELL_CHANGE");
+				dvdnav_current_title_info(inst->dvdnav, &tt, &ptt);
+				dvdnav_get_position(inst->dvdnav, &pos, &len);
+				DEBUG_VPRINT(LOG_MODULE, "Cell change: Title %d, Chapter %d", tt, ptt);
+				DEBUG_VPRINT(LOG_MODULE, "At pos %d/%d", pos, len);
+			}
+			break;
+		}
+		case DVDNAV_HIGHLIGHT:
+		{
+			dvdnav_highlight_event_t * const event = (dvdnav_highlight_event_t*) inst->buf;
+			DEBUG_VPRINT(LOG_MODULE, "Hightlight button: %i",
+				event->buttonN);
+			(void) event;
+			break;
+		}
+		case DVDNAV_SPU_CLUT_CHANGE:
+		{
+			DEBUG_PRINT(LOG_MODULE, "DVDNAV_SPU_CLUT_CHANGE");
+			break;
+		}
+		case DVDNAV_SPU_STREAM_CHANGE:
+		{
+			DEBUG_PRINT(LOG_MODULE, "DVDNAV_SPU_STREAM_CHANGE");
 			break;
 		}
 		default:
