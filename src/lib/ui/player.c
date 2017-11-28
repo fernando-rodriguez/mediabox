@@ -2942,17 +2942,17 @@ avbox_player_control(void * context, struct avbox_message * msg)
 		{
 			struct avbox_syncarg * const arg = ctlmsg->data;
 
-			if (inst->getmastertime == avbox_player_getaudiotime) {
+			if (inst->audio_stream != NULL) {
 				/* drain the audio stream and reset it's clock */
 				avbox_audiostream_pause(inst->audio_stream);
 				avbox_audiostream_setclock(inst->audio_stream, 0);
 				avbox_audiostream_resume(inst->audio_stream);
 				inst->audio_time_set = 0;
-			} else {
-				/* reset video clock */
-				avbox_stopwatch_reset(inst->video_time, 0);
-				avbox_stopwatch_start(inst->video_time);
 			}
+
+			/* reset video clock */
+			avbox_stopwatch_reset(inst->video_time, 0);
+			avbox_stopwatch_start(inst->video_time);
 
 			avbox_syncarg_return(arg, NULL);
 			break;
