@@ -313,7 +313,7 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 			}
 			break;
 		}
-		case 0xFFFFFFFF: /* DVDNAV_AUDIO_STREAM_CHANGE: */
+		case DVDNAV_AUDIO_STREAM_CHANGE:
 		{
 			if (!inst->playing) {
 				break;
@@ -341,20 +341,23 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 				inst->active_stream_fmt != active_stream_fmt) {
 
 				struct avbox_syncarg arg;
-				const int stream_id = avbox_dvdio_get_stream_id(inst, active_stream);
+				int stream_id = avbox_dvdio_get_stream_id(inst, active_stream);
 
 				/* flush player */;
 				avbox_syncarg_init(&arg, NULL);
 				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_FLUSH, &arg);
 				avbox_syncarg_wait(&arg);
 
+				#if 0
 				/* reset the clock */
 				avbox_syncarg_init(&arg, NULL);
 				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_RESET_CLOCK, &arg);
 				avbox_syncarg_wait(&arg);
+				#endif
 
 				/* change the stream */
-				avbox_syncarg_init(&arg, (void*) &stream_id);
+				DEBUG_VPRINT(LOG_MODULE, "Switching to track id: %d", stream_id);
+				avbox_syncarg_init(&arg, &stream_id);
 				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_CHANGE_AUDIO_TRACK, &arg);
 				avbox_syncarg_wait(&arg);
 

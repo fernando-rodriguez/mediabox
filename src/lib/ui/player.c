@@ -148,6 +148,7 @@ struct avbox_player
 	int still_frame;
 	int still_frame_timer_id;
 	struct avbox_syncarg *still_frame_waiter;
+	int audio_stream_id;
 	int audio_stream_index;
 	int video_stream_index;
 	int play_state;
@@ -1381,37 +1382,30 @@ avbox_player_stream_parse(void *arg)
 		/* if we're waiting for the audio stream... */
 #ifdef ENABLE_DVD
 		if (inst->audio_stream_index == -2) {
-			if (inst->dvdio != NULL) {
-				const int next_stream = dvdnav_get_active_audio_stream(
-					avbox_dvdio_dvdnav(inst->dvdio));
-				if (next_stream != -1) {
+				if (inst->audio_stream_id != -1) {
 					AVStream * const stream = inst->fmt_ctx->streams[inst->packet.stream_index];
 					if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-						const int i_id = avbox_dvdio_dvdnavstream(inst->dvdio, stream->id);
-						if (i_id >= 0) {
-							DEBUG_VPRINT(LOG_MODULE, "Waiting for stream %i, checking: i_id=%d, id=%x, index=%d",
-								next_stream, i_id, stream->id, inst->packet.stream_index);
-							if (i_id == next_stream) {
-								struct avbox_delegate *del;
-								DEBUG_VPRINT(LOG_MODULE, "Selecting stream: %i",
-									inst->packet.stream_index);
-								inst->audio_stream_index = inst->packet.stream_index;
+						DEBUG_VPRINT(LOG_MODULE, "Waiting for stream %i, checking: id=%x, index=%d",
+							inst->audio_stream_id, stream->id, inst->packet.stream_index);
+						if (stream->id  == inst->audio_stream_id) {
+							struct avbox_delegate *del;
+							DEBUG_VPRINT(LOG_MODULE, "Selecting stream: %i",
+								inst->packet.stream_index);
+							inst->audio_stream_index = inst->packet.stream_index;
 
-								if ((del = avbox_thread_delegate(inst->control_thread,
-									avbox_player_restart_audio_dec, inst)) == NULL) {
-									LOG_VPRINT_ERROR("Could not restart decoder: %s",
-										strerror(errno));
-									avbox_player_sendctl(inst, AVBOX_PLAYERCTL_THREADEXIT, NULL);
-								} else {
-									avbox_delegate_wait(del, NULL);
-								}
+							if ((del = avbox_thread_delegate(inst->control_thread,
+								avbox_player_restart_audio_dec, inst)) == NULL) {
+								LOG_VPRINT_ERROR("Could not restart decoder: %s",
+									strerror(errno));
+								avbox_player_sendctl(inst, AVBOX_PLAYERCTL_THREADEXIT, NULL);
+							} else {
+								avbox_delegate_wait(del, NULL);
 							}
 						}
 					}
 				} else {
 					inst->audio_stream_index = -1;
 				}
-			}
 		}
 #endif
 		if (inst->packet.stream_index == inst->video_stream_index) {
@@ -2766,41 +2760,97 @@ avbox_player_control(void * context, struct avbox_message * msg)
 		}
 		case AVBOX_PLAYERCTL_CHANGE_AUDIO_TRACK:
 		{
+			struct avbox_syncarg * const arg = ctlmsg->data;
 			int stream, first_stream = -1, found_active = 0,
 				next_stream = -1;
 
-			DEBUG_PRINT(LOG_MODULE, "AVBOX_PLAYERCTL_CHANGE_AUDIO_TRACK");
+			DEBUG_VPRINT(LOG_MODULE, "AVBOX_PLAYERCTL_CHANGE_AUDIO_TRACK stream_id=%i",
+				(arg == NULL) ? -2 : *(int*)avbox_syncarg_data(arg));
 
-			for (stream = 0; stream < inst->fmt_ctx->nb_streams; stream++) {
-				if (inst->fmt_ctx->streams[stream]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) {
-					continue;
+			if (arg == NULL) {
+				for (stream = 0; stream < inst->fmt_ctx->nb_streams; stream++) {
+					if (inst->fmt_ctx->streams[stream]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) {
+						continue;
+					}
+
+					#if 0
+					if (inst->dvdio != NULL &&
+						avbox_dvdio_dvdnavstream(inst->dvdio, inst->fmt_ctx->streams[stream]->id) == -1) {
+						/*debug*/
+					}
+					#endif
+
+					if (first_stream == -1) {
+						first_stream = stream;
+					}
+					if (stream == inst->audio_stream_index) {
+						found_active = 1;
+						continue;
+					}
+					if (found_active) {
+						next_stream = stream;
+						break;
+					}
 				}
-
-
-
-				if (inst->dvdio != NULL &&
-					avbox_dvdio_dvdnavstream(inst->dvdio, inst->fmt_ctx->streams[stream]->id) == -1) {
-					/*debug*/
+				if (next_stream == -1 && first_stream != -1) {
+					next_stream = first_stream;
 				}
+			} else {
+				int * const stream_id = avbox_syncarg_data(arg);
+				if (*stream_id != -1) {
+					for (stream = 0; stream < inst->fmt_ctx->nb_streams; stream++) {
+						if (inst->fmt_ctx->streams[stream]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) {
+							continue;
+						}
+						if (*stream_id == inst->fmt_ctx->streams[stream]->id) {
+							next_stream = stream;
+							/* found_active = 1; */
+							break;
+						}
+					}
+					if (!found_active) {
+						DEBUG_VPRINT(LOG_MODULE, "Stream id: %d not found. Delaying change",
+							next_stream);
+						inst->audio_stream_id = *stream_id;
+						inst->audio_stream_index = -2;
 
+						/* drain the audio stream and reset it's clock */
+						avbox_audiostream_pause(inst->audio_stream);
+						avbox_audiostream_setclock(inst->audio_stream, 0);
+						avbox_audiostream_resume(inst->audio_stream);
+						inst->audio_time_set = 0;
 
+						/* audio is master so make video buffer unbound */
+						if (inst->video_stream_index != -1) {
+							avbox_queue_setsize(inst->video_frames_q, 0);
+						}
 
+						/* we're done for now */
+						avbox_syncarg_return(arg, NULL);
+						break;
+					}
 
-				if (first_stream == -1) {
-					first_stream = stream;
-				}
-				if (stream == inst->audio_stream_index) {
-					found_active = 1;
-					continue;
-				}
-				if (found_active) {
-					next_stream = stream;
+					/* stream found, fall through */
+
+				} else { /* no stream */
+					DEBUG_PRINT(LOG_MODULE, "No audio stream. Switching to video clock");
+
+					/* reset the video clock */
+					avbox_stopwatch_reset(inst->video_time, 0);
+					avbox_stopwatch_start(inst->video_time);
+					inst->getmastertime = avbox_player_getsystemtime;
+					inst->audio_stream_index = -1;
+
+					/* set video buffer limits */
+					if (inst->video_stream_index != -1) {
+						avbox_queue_setsize(inst->video_frames_q, AVBOX_BUFFER_VIDEO);
+					}
+
+					avbox_syncarg_return(arg, NULL);
 					break;
 				}
 			}
-			if (next_stream == -1 && first_stream != -1) {
-				next_stream = first_stream;
-			}
+
 			if (next_stream != -1 && next_stream != inst->audio_stream_index) {
 				avbox_checkpoint_halt(&inst->stream_parser_checkpoint);
 				do {
@@ -2812,13 +2862,15 @@ avbox_player_control(void * context, struct avbox_message * msg)
 					usleep(1000L);
 				}
 
+				inst->audio_stream_index = next_stream;
+
 				avbox_audiostream_pause(inst->audio_stream);
 				avbox_audiostream_setclock(inst->audio_stream, 0);
 				avbox_audiostream_resume(inst->audio_stream);
-
-				inst->audio_stream_index = next_stream;
 				inst->audio_time_set = 0;
+
 				avbox_player_restart_audio_dec(inst);
+
 				avbox_checkpoint_continue(&inst->stream_parser_checkpoint);
 			}
 
