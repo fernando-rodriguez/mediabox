@@ -867,6 +867,7 @@ avbox_player_audio_decode(void * arg)
 #ifdef ENABLE_DVD
 	if (inst->dvdio != NULL) {
 		int dvdnav_stream = avbox_dvdio_dvdnavstream(
+			inst->dvdio,
 			inst->fmt_ctx->streams[ inst->audio_stream_index]->id);
 		int channels = dvdnav_audio_stream_channels(
 			avbox_dvdio_dvdnav(inst->dvdio), dvdnav_stream);
@@ -1386,7 +1387,7 @@ avbox_player_stream_parse(void *arg)
 				if (next_stream != -1) {
 					AVStream * const stream = inst->fmt_ctx->streams[inst->packet.stream_index];
 					if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-						const int i_id = avbox_dvdio_dvdnavstream(stream->id);
+						const int i_id = avbox_dvdio_dvdnavstream(inst->dvdio, stream->id);
 						if (i_id >= 0) {
 							DEBUG_VPRINT(LOG_MODULE, "Waiting for stream %i, checking: i_id=%d, id=%x, index=%d",
 								next_stream, i_id, stream->id, inst->packet.stream_index);
@@ -2774,6 +2775,17 @@ avbox_player_control(void * context, struct avbox_message * msg)
 				if (inst->fmt_ctx->streams[stream]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) {
 					continue;
 				}
+
+
+
+				if (inst->dvdio != NULL &&
+					avbox_dvdio_dvdnavstream(inst->dvdio, inst->fmt_ctx->streams[stream]->id) == -1) {
+					/*debug*/
+				}
+
+
+
+
 				if (first_stream == -1) {
 					first_stream = stream;
 				}
@@ -3015,7 +3027,7 @@ avbox_player_control(void * context, struct avbox_message * msg)
 					inst->last_active_stream_channels != -1) {
 					int s;
 					for (s = 0; s < inst->fmt_ctx->nb_streams; s++) {
-						if (avbox_dvdio_dvdnavstream(inst->fmt_ctx->streams[s]->id) == active_stream) {
+						if (avbox_dvdio_dvdnavstream(inst->dvdio, inst->fmt_ctx->streams[s]->id) == active_stream) {
 							const int n_channels = dvdnav_audio_stream_channels(dvdnav, active_stream);
 							const uint16_t format = dvdnav_audio_stream_format(dvdnav, active_stream);
 							if (inst->last_active_stream_channels == n_channels &&

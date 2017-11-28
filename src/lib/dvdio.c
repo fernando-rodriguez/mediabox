@@ -85,8 +85,18 @@ avbox_dvdio_process_menus(struct avbox_dvdio * const inst)
 
 
 static int
-avbox_dvdio_get_stream_id(int8_t active_stream)
+avbox_dvdio_get_stream_id(struct avbox_dvdio * const inst, int8_t active_stream)
 {
+	const uint16_t format = 
+		dvdnav_audio_stream_format(inst->dvdnav, active_stream);
+	switch (format) {
+	case DVD_AUDIO_FORMAT_DTS:       return active_stream | 0x88;
+	case DVD_AUDIO_FORMAT_AC3:       return active_stream | 0x80;
+	case DVD_AUDIO_FORMAT_LPCM:      return active_stream | 0xa0;
+	case DVD_AUDIO_FORMAT_MPEG2_EXT: return active_stream | 0xc0;
+	case DVD_AUDIO_FORMAT_SDDS:      return -1;
+	default:                         return -1;
+	}
 	return -1;
 }
 
@@ -331,7 +341,7 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 				inst->active_stream_fmt != active_stream_fmt) {
 
 				struct avbox_syncarg arg;
-				const int stream_id = avbox_dvdio_get_stream_id(active_stream);
+				const int stream_id = avbox_dvdio_get_stream_id(inst, active_stream);
 
 				/* flush player */;
 				avbox_syncarg_init(&arg, NULL);
@@ -581,23 +591,33 @@ avbox_dvdio_underrunok(const struct avbox_dvdio * const inst)
  * a given AVStream id.
  */
 int
-avbox_dvdio_dvdnavstream(int stream_id)
+avbox_dvdio_dvdnavstream(struct avbox_dvdio * const inst, int stream_id)
 {
+	const char *codec = "unknown";
+	int oldid = stream_id;
+
 	/* find the stream id */
 	if ((stream_id & 0xf8) == 0x88) { /* dts */
 		stream_id &= 0x07;
+		codec = "dts";
 	} else if ((stream_id & 0xf0) == 0x80) { /* a52 */
 		stream_id &= 0xf;
+		codec = "a52";
 	} else if ((stream_id & 0xf0) == 0xa0) { /* lpcm */
 		stream_id &= 0x1f;
+		codec = "lpcm";
 	} else if ((stream_id & 0xe0) == 0xc0) { /* mpga */
 		stream_id &= 0x1f;
+		codec = "mpga";
 	} else /*if ((i_id & 0x80) == 0x80)*/ {
 		/* i_id &= 0x07; */
 		LOG_VPRINT_ERROR("Could not map stream: %i!",
 			stream_id);
 		stream_id = -1;
 	}
+
+	DEBUG_VPRINT(LOG_MODULE, "Stream libavid: 0x%x |  id: 0x%x codec: %s --> 0x%x",
+		oldid, stream_id, codec, avbox_dvdio_get_stream_id(inst, stream_id));
 
 	return stream_id;
 }

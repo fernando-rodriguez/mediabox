@@ -61,7 +61,7 @@ avbox_dvdio_isblocking(struct avbox_dvdio * const inst);
  * a given AVStream id.
  */
 int
-avbox_dvdio_dvdnavstream(int stream_id);
+avbox_dvdio_dvdnavstream(struct avbox_dvdio * const inst, int stream_id);
 
 
 /**
