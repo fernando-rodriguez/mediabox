@@ -10,22 +10,25 @@
 struct avbox_dvdio;
 
 
-typedef void (*avbox_dvdio_dvdnavcb)(void *context, int event, void *data);
-
-
 /**
  * Opens a DVD device for reading.
  */
 struct avbox_dvdio *
 avbox_dvdio_open(const char * const path,
-	struct avbox_player * const player,
-	avbox_dvdio_dvdnavcb callback, void * callback_context);
+	struct avbox_player * const player);
 
 /**
  * Gets the coordinates of the highlighted item.
  */
 struct avbox_rect*
 avbox_dvdio_highlight(struct avbox_dvdio * const inst);
+
+
+/**
+ * Gets the underlying object.
+ */
+struct avbox_object *
+avbox_dvdio_object(struct avbox_dvdio * const inst);
 
 
 /**

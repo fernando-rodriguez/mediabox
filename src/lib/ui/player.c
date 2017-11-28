@@ -795,23 +795,6 @@ decoder_exit:
 }
 
 
-#ifdef ENABLE_DVD
-/**
- * Handles DVDNAV events
- */
-static void
-avbox_player_dvdnav_handler(void * const context, int event, void *data)
-{
-	struct avbox_player * const inst = context;
-	struct avbox_syncarg arg;
-
-	avbox_syncarg_init(&arg, data);
-	avbox_player_sendctl(inst, AVBOX_PLAYERCTL_DVD | event, &arg);
-	avbox_syncarg_wait(&arg);
-}
-#endif
-
-
 #define AVBOX_PLAYER_THREADEXIT_NONE		(NULL)
 #define AVBOX_PLAYER_THREADEXIT_INVALID_AUDIO	((void*)0x01)
 
@@ -1860,8 +1843,7 @@ avbox_player_doplay(struct avbox_player * const inst,
 #ifdef ENABLE_DVD
 	if (!strncmp("dvd:", path, 4)) {
 		ASSERT(inst->dvdio == NULL);
-		if ((inst->dvdio = avbox_dvdio_open(path + 4, inst,
-			avbox_player_dvdnav_handler, inst)) == NULL) {
+		if ((inst->dvdio = avbox_dvdio_open(path + 4, inst)) == NULL) {
 			LOG_VPRINT_ERROR("Could not open DVD: %s",
 				strerror(errno));
 			return;
@@ -2633,8 +2615,8 @@ avbox_player_control(void * context, struct avbox_message * msg)
 #ifdef ENABLE_DVD
 			/* cleanup dvdnav stuff */
 			if (inst->dvdio != NULL) {
-				avbox_dvdio_close(inst->dvdio);
-				avbox_dvdio_destroy(inst->dvdio);
+				avbox_object_destroy(
+					avbox_dvdio_object(inst->dvdio));
 				inst->dvdio = NULL;
 			}
 #endif
@@ -3053,94 +3035,6 @@ avbox_player_control(void * context, struct avbox_message * msg)
 			}
 			break;
 		}
-#ifdef  ENABLE_DVD
-		case AVBOX_PLAYERCTL_DVD_AUDIO_STREAM_CHANGE:
-		{
-			struct avbox_syncarg * const arg = ctlmsg->data;
-			dvdnav_audio_stream_change_event_t * const e = avbox_syncarg_data(arg);
-
-			DEBUG_VPRINT(LOG_MODULE, "AVBOX_PLAYERCTL_DVD_AUDIO_STREAM_CHANGE (phys=%i|log=%i|audio_stream_index=%i)",
-				e->physical, e->logical, inst->audio_stream_index);
-
-			ASSERT(inst != NULL);
-			ASSERT(inst->dvdio != NULL);
-			ASSERT(arg != NULL);
-
-			(void) e;
-
-			if (inst->play_state == AVBOX_PLAYER_PLAYSTATE_PLAYING) {
-				int really_same = 0;
-				dvdnav_t * const dvdnav = avbox_dvdio_dvdnav(inst->dvdio);
-				const int8_t active_stream = dvdnav_get_active_audio_stream(dvdnav);
-
-				/* so the last stream appears to be the same as this one...
-				 * lets make sure */
-				if (inst->last_active_stream == active_stream &&
-					inst->last_active_stream_channels != -1) {
-					int s;
-					for (s = 0; s < inst->fmt_ctx->nb_streams; s++) {
-						if (avbox_dvdio_dvdnavstream(inst->dvdio, inst->fmt_ctx->streams[s]->id) == active_stream) {
-							const int n_channels = dvdnav_audio_stream_channels(dvdnav, active_stream);
-							const uint16_t format = dvdnav_audio_stream_format(dvdnav, active_stream);
-							if (inst->last_active_stream_channels == n_channels &&
-								inst->last_active_stream_format == format) {
-								really_same = 1;
-							}
-						}
-					}
-				}
-
-				if (inst->last_active_stream != active_stream || !really_same) {
-
-					/* flush the audio pipeline */
-					while (!avbox_player_flush(inst, AVBOX_PLAYER_FLUSH_ALL)) {
-						usleep(1000L);
-					}
-
-					inst->last_active_stream = active_stream;
-					inst->last_active_stream_channels = dvdnav_audio_stream_channels(dvdnav, active_stream);
-					inst->last_active_stream_format = dvdnav_audio_stream_format(dvdnav, active_stream);
-
-					if (active_stream != -1) {
-						/* drain the audio stream and reset it's clock */
-						avbox_audiostream_pause(inst->audio_stream);
-						avbox_audiostream_setclock(inst->audio_stream, 0);
-						avbox_audiostream_resume(inst->audio_stream);
-						inst->audio_time_set = 0;
-
-						/* audio is master so make video buffer unbound */
-						if (inst->video_stream_index != -1) {
-							avbox_queue_setsize(inst->video_frames_q, 0);
-						}
-
-						/* we cannot change stream yet because we may not even
-						 * have received a frame for that stream yet, so we set
-						 * the audio stream to -2 to signal the input thread to
-						 * reset the audio decoder when the new stream is known */
-						inst->audio_stream_index = -2;
-
-					} else {
-						DEBUG_PRINT(LOG_MODULE, "No audio stream. Switching to video clock");
-
-						/* reset the video clock */
-						avbox_stopwatch_reset(inst->video_time, 0);
-						avbox_stopwatch_start(inst->video_time);
-						inst->getmastertime = avbox_player_getsystemtime;
-						inst->audio_stream_index = -1;
-
-						/* set video buffer limits */
-						if (inst->video_stream_index != -1) {
-							avbox_queue_setsize(inst->video_frames_q, AVBOX_BUFFER_VIDEO);
-						}
-					}
-				}
-			}
-
-			/* signal the DVDNAV state machine to continue */
-			avbox_syncarg_return(arg, NULL);
-			break;
-		}
-#endif
 		default:
 			DEBUG_VABORT("player", "Invalid message type: %i", ctlmsg->id);
 			abort();

@@ -40,8 +40,6 @@ struct avbox_dvdio
 
 	dvdnav_t *dvdnav;
 	AVIOContext *avio_ctx;
-	void *callback_context;
-	avbox_dvdio_dvdnavcb callback;
 	uint8_t *avio_ctx_buffer;
 	struct avbox_player *player;
 	struct avbox_rect highlight;
@@ -404,23 +402,7 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 			break;
 		}
 		default:
-			if (!inst->playing) {
-				switch (event) {
-				case DVDNAV_STILL_FRAME:
-				{
-					dvdnav_still_skip(inst->dvdnav);
-					break;
-				}
-				default:
-					break;
-				}
-			} else {
-				if (inst->callback != NULL) {
-					inst->callback(inst->callback_context, event, inst->buf);
-				}
-			}
-			inst->buf = NULL;
-			break;
+			abort();
 		}
 		if (event != DVDNAV_BLOCK_OK) {
 			inst->buf = NULL;
@@ -501,6 +483,22 @@ avbox_dvdio_control(void * context, struct avbox_message * msg)
 
 		avbox_dvdio_process_menus(inst);
 		avbox_input_eventfree(event);
+		return AVBOX_DISPATCH_OK;
+	}
+	case AVBOX_MESSAGETYPE_DESTROY:
+	{
+		DEBUG_PRINT(LOG_MODULE, "Destroying DVDIO");
+		if (!inst->closed) {
+			dvdnav_close(inst->dvdnav);
+		}
+		return AVBOX_DISPATCH_OK;
+	}
+	case AVBOX_MESSAGETYPE_CLEANUP:
+	{
+		if (inst->avio_ctx) {
+			av_free(inst->avio_ctx);
+		}
+		free(inst);
 		return AVBOX_DISPATCH_OK;
 	}
 	default:
@@ -596,32 +594,21 @@ avbox_dvdio_underrunok(const struct avbox_dvdio * const inst)
 int
 avbox_dvdio_dvdnavstream(struct avbox_dvdio * const inst, int stream_id)
 {
-	const char *codec = "unknown";
-	int oldid = stream_id;
-
 	/* find the stream id */
 	if ((stream_id & 0xf8) == 0x88) { /* dts */
 		stream_id &= 0x07;
-		codec = "dts";
 	} else if ((stream_id & 0xf0) == 0x80) { /* a52 */
 		stream_id &= 0xf;
-		codec = "a52";
 	} else if ((stream_id & 0xf0) == 0xa0) { /* lpcm */
 		stream_id &= 0x1f;
-		codec = "lpcm";
 	} else if ((stream_id & 0xe0) == 0xc0) { /* mpga */
 		stream_id &= 0x1f;
-		codec = "mpga";
 	} else /*if ((i_id & 0x80) == 0x80)*/ {
 		/* i_id &= 0x07; */
 		LOG_VPRINT_ERROR("Could not map stream: %i!",
 			stream_id);
 		stream_id = -1;
 	}
-
-	DEBUG_VPRINT(LOG_MODULE, "Stream libavid: 0x%x |  id: 0x%x codec: %s --> 0x%x",
-		oldid, stream_id, codec, avbox_dvdio_get_stream_id(inst, stream_id));
-
 	return stream_id;
 }
 
@@ -653,12 +640,22 @@ end:
 	return ret;
 }
 
+
+/**
+ * Gets the underlying object.
+ */
+struct avbox_object *
+avbox_dvdio_object(struct avbox_dvdio * const inst)
+{
+	return inst->object;
+}
+
+
 /**
  * Opens a DVD device for reading.
  */
 struct avbox_dvdio *
-avbox_dvdio_open(const char * const path, struct avbox_player * const player,
-	avbox_dvdio_dvdnavcb callback, void *callback_context)
+avbox_dvdio_open(const char * const path, struct avbox_player * const player)
 {
 	struct avbox_dvdio *inst;
 	struct avbox_dvdio *ret = NULL;
@@ -718,8 +715,6 @@ avbox_dvdio_open(const char * const path, struct avbox_player * const player,
 	inst->active_stream_ch = 0;
 	inst->active_stream_fmt = 0xffff;
 	inst->player = player;
-	inst->callback = callback;
-	inst->callback_context = callback_context;
 
 	/* create a dispatch object */
 	if ((inst->object = avbox_object_new(avbox_dvdio_control, inst)) == NULL) {
