@@ -32,6 +32,20 @@ avbox_dvdio_object(struct avbox_dvdio * const inst);
 
 
 /**
+ * Returns 1 if the stream can be paused.
+ */
+int
+avbox_dvdio_canpause(const struct avbox_dvdio * const inst);
+
+
+/**
+ * Seek the stream
+ */
+void
+avbox_dvdio_seek(struct avbox_dvdio * const inst, int flags, int64_t pos);
+
+
+/**
  * Reopen a closed dvdio stream.
  */
 int

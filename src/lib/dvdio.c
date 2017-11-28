@@ -581,9 +581,63 @@ avbox_dvdio_isblocking(struct avbox_dvdio * const inst)
 int
 avbox_dvdio_underrunok(const struct avbox_dvdio * const inst)
 {
-	return (!dvdnav_is_domain_vts(inst->dvdnav) &&
+	return  1 || ((!dvdnav_is_domain_vts(inst->dvdnav) &&
 		!dvdnav_is_domain_fp(inst->dvdnav)) ||
-		inst->waiting || inst->still_frame;
+		inst->waiting || inst->still_frame);
+}
+
+
+/**
+ * Returns 1 if the stream can be paused.
+ */
+int
+avbox_dvdio_canpause(const struct avbox_dvdio * const inst)
+{
+	return (dvdnav_is_domain_fp(inst->dvdnav) ||
+		dvdnav_is_domain_vts(inst->dvdnav));
+}
+
+
+/**
+ * Seek the stream
+ */
+void
+avbox_dvdio_seek(struct avbox_dvdio * const inst, int flags, int64_t pos)
+{
+	int32_t current_title, current_part, next_part, n_parts;
+
+	if (dvdnav_current_title_info(inst->dvdnav,
+		&current_title, &current_part) != DVDNAV_STATUS_OK) {
+		LOG_VPRINT_ERROR("Could not get DVD title info: %s",
+			dvdnav_err_to_string(inst->dvdnav));
+		return;
+	}
+
+	if (current_title == -1) {
+		LOG_PRINT_ERROR("Cannot seek. Currently in a menu?");
+		return;
+	}
+
+	if (dvdnav_get_number_of_parts(inst->dvdnav,
+		current_title, &n_parts) != DVDNAV_STATUS_OK) {
+		LOG_VPRINT_ERROR("Could not get number of parts in DVD title: %s",
+			dvdnav_err_to_string(inst->dvdnav));
+		return;
+	}
+
+	next_part = current_part + pos;
+
+	if (next_part > (n_parts - 1)) {
+		LOG_PRINT_ERROR("Cannot seek. Already at last part");
+	} else if (next_part < 0) {
+		LOG_PRINT_ERROR("Cannot seek before start.");
+	}
+
+	if (dvdnav_part_play(inst->dvdnav, current_title, next_part) != DVDNAV_STATUS_OK) {
+		LOG_VPRINT_ERROR("Could not seek to part %i: %s",
+			next_part, dvdnav_err_to_string(inst->dvdnav));
+		return;
+	}
 }
 
 

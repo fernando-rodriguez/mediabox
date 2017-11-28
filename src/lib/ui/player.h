@@ -54,14 +54,6 @@
 #define AVBOX_PLAYERCTL_UPDATE				(0x16)
 
 
-
-#ifdef ENABLE_DVD
-#define AVBOX_PLAYERCTL_DVD				(0x0700)
-#define AVBOX_PLAYERCTL_DVD_AUDIO_STREAM_CHANGE		(AVBOX_PLAYERCTL_DVD | DVDNAV_AUDIO_STREAM_CHANGE)
-#endif
-
-
-
 struct avbox_player;
 
 enum avbox_aspect_ratio

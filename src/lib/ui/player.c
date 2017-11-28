@@ -135,9 +135,6 @@ struct avbox_player
 
 #ifdef ENABLE_DVD
 	struct avbox_dvdio *dvdio;
-	int last_active_stream;
-	int last_active_stream_channels;
-	uint16_t last_active_stream_format;
 #endif
 
 	const char *media_file;
@@ -1224,9 +1221,6 @@ avbox_player_stream_parse(void *arg)
 		inst->fmt_ctx->pb = avbox_dvdio_avio(inst->dvdio);
 		file_to_open = inst->media_file + 4;
 		inst->fmt_ctx->ctx_flags |= AVFMTCTX_NOHEADER;
-		inst->last_active_stream = -1;
-		inst->last_active_stream_channels = -1;
-		inst->last_active_stream_format = 0xffff;
 	}
 #endif
 
@@ -1363,34 +1357,33 @@ avbox_player_stream_parse(void *arg)
 		}
 
 		/* if we're waiting for the audio stream... */
-#ifdef ENABLE_DVD
 		if (inst->audio_stream_index == -2) {
-				if (inst->audio_stream_id != -1) {
-					AVStream * const stream = inst->fmt_ctx->streams[inst->packet.stream_index];
-					if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-						DEBUG_VPRINT(LOG_MODULE, "Waiting for stream %i, checking: id=%x, index=%d",
-							inst->audio_stream_id, stream->id, inst->packet.stream_index);
-						if (stream->id  == inst->audio_stream_id) {
-							struct avbox_delegate *del;
-							DEBUG_VPRINT(LOG_MODULE, "Selecting stream: %i",
-								inst->packet.stream_index);
-							inst->audio_stream_index = inst->packet.stream_index;
+			if (inst->audio_stream_id != -1) {
+				AVStream * const stream = inst->fmt_ctx->streams[inst->packet.stream_index];
+				if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+					DEBUG_VPRINT(LOG_MODULE, "Waiting for stream %i, checking: id=%x, index=%d",
+						inst->audio_stream_id, stream->id, inst->packet.stream_index);
+					if (stream->id  == inst->audio_stream_id) {
+						struct avbox_delegate *del;
+						DEBUG_VPRINT(LOG_MODULE, "Selecting stream: %i",
+							inst->packet.stream_index);
+						inst->audio_stream_index = inst->packet.stream_index;
 
-							if ((del = avbox_thread_delegate(inst->control_thread,
-								avbox_player_restart_audio_dec, inst)) == NULL) {
-								LOG_VPRINT_ERROR("Could not restart decoder: %s",
-									strerror(errno));
-								avbox_player_sendctl(inst, AVBOX_PLAYERCTL_THREADEXIT, NULL);
-							} else {
-								avbox_delegate_wait(del, NULL);
-							}
+						if ((del = avbox_thread_delegate(inst->control_thread,
+							avbox_player_restart_audio_dec, inst)) == NULL) {
+							LOG_VPRINT_ERROR("Could not restart decoder: %s",
+								strerror(errno));
+							avbox_player_sendctl(inst, AVBOX_PLAYERCTL_THREADEXIT, NULL);
+						} else {
+							avbox_delegate_wait(del, NULL);
 						}
 					}
-				} else {
-					inst->audio_stream_index = -1;
 				}
+			} else {
+				inst->audio_stream_index = -1;
+			}
 		}
-#endif
+
 		if (inst->packet.stream_index == inst->video_stream_index) {
 			if ((ppacket = malloc(sizeof(AVPacket))) == NULL) {
 				LOG_PRINT_ERROR("Could not allocate memory for packet!");
@@ -1517,6 +1510,7 @@ avbox_player_stream_checkpoint_wait(struct avbox_player * const inst, int64_t ti
 	return avbox_checkpoint_wait(&inst->stream_parser_checkpoint, timeout);
 #endif
 }
+
 
 /**
  * Complete halt all stages of the decoding pipeline.
@@ -2655,22 +2649,9 @@ avbox_player_control(void * context, struct avbox_message * msg)
 				avbox_player_throwexception(inst, "Cannot pause: Not playing!");
 				break;
 			}
-
 #ifdef ENABLE_DVD
-			/* if this is a DVD then we can only pause while playing a
-			 * VTS. Since mediabox sends the pause command when the play
-			 * button is pressed (ie. it has a combined play/pause button
-			 * we assume that the user pressed PLAY on a menu and activate
-			 * the selected entry. TODO: Perhaps this can be controlled by
-			 * a flag to allow for applications with a separate play and
-			 * pause button */
-			if (inst->dvdio) {
-				dvdnav_t * const dvdnav = avbox_dvdio_dvdnav(inst->dvdio);
-				ASSERT(dvdnav != NULL);
-				if (!dvdnav_is_domain_fp(dvdnav) && !dvdnav_is_domain_vts(dvdnav)) {
-					dvdnav_button_activate(dvdnav, dvdnav_get_current_nav_pci(dvdnav));
-					break;
-				}
+			if (inst->dvdio && !avbox_dvdio_canpause(inst->dvdio)) {
+				break;
 			}
 #endif
 			/* update status and pause */
@@ -2696,43 +2677,7 @@ avbox_player_control(void * context, struct avbox_message * msg)
 				(struct avbox_player_seekargs*) ctlmsg->data;
 #ifdef ENABLE_DVD
 			if (inst->dvdio != NULL) {
-				int32_t current_title, current_part, next_part, n_parts;
-				dvdnav_t * const dvdnav = avbox_dvdio_dvdnav(inst->dvdio);
-				ASSERT(dvdnav != NULL);
-
-				if (dvdnav_current_title_info(dvdnav, &current_title, &current_part) != DVDNAV_STATUS_OK) {
-					LOG_VPRINT_ERROR("Could not get DVD title info: %s",
-						dvdnav_err_to_string(dvdnav));
-					break;
-				}
-
-				if (current_title == -1) {
-					LOG_PRINT_ERROR("Cannot seek. Currently in a menu?");
-					break;
-				}
-
-				if (dvdnav_get_number_of_parts(dvdnav, current_title, &n_parts) != DVDNAV_STATUS_OK) {
-					LOG_VPRINT_ERROR("Could not get number of parts in DVD title: %s",
-						dvdnav_err_to_string(dvdnav));
-					break;
-				}
-
-				next_part = current_part + args->pos;
-
-				if (next_part > (n_parts - 1)) {
-					LOG_PRINT_ERROR("Cannot seek. Already at last part");
-					break;
-				} else if (next_part < 0) {
-					LOG_PRINT_ERROR("Cannot seek before start.");
-					break;
-				}
-
-				if (dvdnav_part_play(dvdnav, current_title, next_part) != DVDNAV_STATUS_OK) {
-					LOG_VPRINT_ERROR("Could not seek to part %i: %s",
-						next_part, dvdnav_err_to_string(dvdnav));
-					break;
-				}
-
+				avbox_dvdio_seek(inst->dvdio, args->flags, args->pos);
 				break;
 			}
 #endif
@@ -2861,8 +2806,8 @@ avbox_player_control(void * context, struct avbox_message * msg)
 		case AVBOX_PLAYERCTL_BUFFER_UNDERRUN:
 		{
 			DEBUG_PRINT(LOG_MODULE, "AVBOX_PLAYERCTL_BUFFER_UNDERRUN");
-#if ENABLE_DVD
-			if (inst->dvdio != NULL /*&& avbox_dvdio_underrunok(inst->dvdio) */) {
+#ifdef ENABLE_DVD
+			if (inst->dvdio != NULL && avbox_dvdio_underrunok(inst->dvdio)) {
 				break;
 			}
 #endif
