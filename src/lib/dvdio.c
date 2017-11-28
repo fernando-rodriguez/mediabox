@@ -244,6 +244,7 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 				const char *title;
 				int32_t current_title, current_part;
 				uint64_t *part_times = NULL, duration = 0;
+				int64_t s_duration;
 				uint32_t res_x, res_y;
 
 				DEBUG_PRINT(LOG_MODULE, "DVDNAV_VTS_CHANGE");
@@ -267,13 +268,15 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 				if (dvdnav_current_title_info(inst->dvdnav, &current_title, &current_part) != DVDNAV_STATUS_OK) {
 					LOG_VPRINT_ERROR("Could not get DVD title info: %s",
 						dvdnav_err_to_string(inst->dvdnav));
-					duration = 0;
+					s_duration = 0;
 				} else {
 
 					(void) dvdnav_describe_title_chapters(inst->dvdnav, current_title,
 						&part_times, &duration);
 					if (part_times != NULL) {
 						free(part_times);
+					} else {
+						s_duration = duration;
 					}
 				}
 
@@ -290,7 +293,7 @@ avio_read_packet(void *opaque, uint8_t *buf, int bufsz)
 				avbox_syncarg_wait(&arg);
 
 				/* set duration */
-				avbox_syncarg_init(&arg, &duration);
+				avbox_syncarg_init(&arg, &s_duration);
 				avbox_player_sendctl(inst->player, AVBOX_PLAYERCTL_SET_DURATION, &arg);
 				avbox_syncarg_wait(&arg);
 
@@ -826,19 +829,4 @@ avbox_dvdio_reopen(struct avbox_dvdio * const inst)
 	ASSERT(inst->dvdnav != NULL);
 	inst->closed = 0;
 	return 0;
-}
-
-
-/**
- * Free DVDIO resources
- */
-void
-avbox_dvdio_destroy(struct avbox_dvdio * const inst)
-{
-	DEBUG_PRINT(LOG_MODULE, "Destroying DVDIO");
-	dvdnav_close(inst->dvdnav);
-	if (inst->avio_ctx) {
-		av_free(inst->avio_ctx);
-	}
-	free(inst);
 }
