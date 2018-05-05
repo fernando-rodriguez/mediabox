@@ -1,0 +1,263 @@
+﻿<Page
+    x:Class="MediaboxRemote.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MediaboxRemote"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1*" />
+            <ColumnDefinition Width="1*" />
+            <ColumnDefinition Width="1*" />
+            <ColumnDefinition Width="1*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+            <RowDefinition Height="1*" />
+        </Grid.RowDefinitions>
+        <Button
+            Name="btnMainMenu"
+            Content="..."
+            Grid.Row="0"
+            Grid.ColumnSpan="4"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Right"
+            Margin="5"
+            Click="OnShowMenu">
+            <FlyoutBase.AttachedFlyout>
+                <MenuFlyout>
+                    <MenuFlyoutItem Text="Connect" Click="OnConnectClick" />
+                    <MenuFlyoutItem Text="Send URL" />
+                    <MenuFlyoutItem Text="About" Click="OnAboutClick" />
+                </MenuFlyout>
+            </FlyoutBase.AttachedFlyout>
+        </Button>
+        <Grid Grid.Row="1"
+              Grid.Column="0"
+              Grid.ColumnSpan="4"
+              Grid.RowSpan="4"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="1*" />
+            </Grid.RowDefinitions>
+            <Button
+                Name="btnVolUp"
+                Content="VOL UP"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="VOLUP"
+                Grid.Row="0"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnUp"
+                Content="UP"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="UP"
+                Grid.Row="0"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnTrack"
+                Content="TRACK"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="TRACK"
+                Grid.Row="0"
+                Grid.Column="2"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnLeft"
+                Content="LEFT"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="LEFT"
+                Grid.Row="1"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnMenu"
+                Content="MENU"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="MENU"
+                Grid.Row="1"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnRight"
+                Content="RIGHT"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="RIGHT"
+                Grid.Row="1"
+                Grid.Column="2"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnVolDown"
+                Content="VOL DOWN"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="VOLDOWN"
+                Grid.Row="2"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnDown"
+                Content="DOWN"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="DOWN"
+                Grid.Row="2"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnMute"
+                Content="MUTE"
+                Grid.Row="2"
+                Grid.Column="2"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="MUTE"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnBack"
+                Content="BACK"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="BACK"
+                Grid.Row="3"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnKeyboard"
+                Content="KEYBD"
+                Grid.Row="3"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5"
+                Click="OnKeyboardClick" />
+            <Button
+                Name="btnEnter"
+                Content="ENTER"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="ENTER"
+                Grid.Row="3"
+                Grid.Column="2"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+        </Grid>
+        <Button
+            Name="btnPrev"
+            Content="|&lt;"
+            Command="{x:Bind ClickCommand}"
+            CommandParameter="PREV"
+            Grid.Row="6"
+            Grid.Column="0"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Margin="5" />
+        <Button
+            Name="btnRewind"
+            Content="&lt;&lt;"
+            Command="{x:Bind ClickCommand}"
+            CommandParameter="REWIND"
+            Grid.Row="6"
+            Grid.Column="1"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Margin="5" />
+        <Button
+            Name="btnFF"
+            Content="&gt;&gt;"
+            Command="{x:Bind ClickCommand}"
+            CommandParameter="FF"
+            Grid.Row="6"
+            Grid.Column="2"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Margin="5" />
+        <Button
+            Name="btnNext"
+            Content="&gt;|"
+            Command="{x:Bind ClickCommand}"
+            CommandParameter="NEXT"
+            Grid.Row="6"
+            Grid.Column="3"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Margin="5" />
+        <Grid Grid.Row="7"
+              Grid.Column="0"
+              Grid.ColumnSpan="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1*" />
+            </Grid.RowDefinitions>
+            <Button
+                Name="btnStop"
+                Content="STOP"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="STOP"
+                Grid.Row="0"
+                Grid.Column="0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnPlay"
+                Content="PLAY"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="PLAY"
+                Grid.Row="0"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+            <Button
+                Name="btnInfo"
+                Content="INFO"
+                Command="{x:Bind ClickCommand}"
+                CommandParameter="INFO"
+                Grid.Row="0"
+                Grid.Column="2"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                Margin="5" />
+        </Grid>
+    </Grid>
+</Page>
