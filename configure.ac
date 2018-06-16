@@ -314,12 +314,12 @@ AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
 # ffmpeg
 #
 if test x"$with_system_ffmpeg" != xno; then
-	FFMPEG_HINT="Please make sure ffmpeg >= 3.3.6 libraries and header files are installed or try --without-system-ffmpeg."
-	PKG_CHECK_MODULES(LIBAVUTIL, [libavutil >= 55.58.100], , AC_MSG_ERROR([Unable to find libavutil. ${FFMPEG_HINT}]))
-	PKG_CHECK_MODULES(LIBAVFORMAT, [libavformat >= 57.71.100], , AC_MSG_ERROR([Unable to find libavformat. ${FFMPEG_HINT}]))
-	PKG_CHECK_MODULES(LIBAVCODEC, [libavcodec >= 57.89.100], , AC_MSG_ERROR([Unable to find libavcodec. ${FFMPEG_HINT}]))
-	PKG_CHECK_MODULES(LIBAVFILTER, [libavfilter >= 6.82.100], , AC_MSG_ERROR([Unable to find libavfilter. ${FFMPEG_HINT}]))
-	PKG_CHECK_MODULES(LIBSWSCALE, [libswscale >= 4.6.100], , AC_MSG_ERROR([Unable to find libswscale. ${FFMPEG_HINT}]))
+	FFMPEG_HINT="Please make sure ffmpeg >= 3.2.3 libraries and header files are installed or try --without-system-ffmpeg."
+	PKG_CHECK_MODULES(LIBAVUTIL, [libavutil >= 55.34.101], , AC_MSG_ERROR([Unable to find libavutil. ${FFMPEG_HINT}]))
+	PKG_CHECK_MODULES(LIBAVFORMAT, [libavformat >= 57.56.101], , AC_MSG_ERROR([Unable to find libavformat. ${FFMPEG_HINT}]))
+	PKG_CHECK_MODULES(LIBAVCODEC, [libavcodec >= 57.64.101], , AC_MSG_ERROR([Unable to find libavcodec. ${FFMPEG_HINT}]))
+	PKG_CHECK_MODULES(LIBAVFILTER, [libavfilter >= 6.65.100], , AC_MSG_ERROR([Unable to find libavfilter. ${FFMPEG_HINT}]))
+	PKG_CHECK_MODULES(LIBSWSCALE, [libswscale >= 4.2.100], , AC_MSG_ERROR([Unable to find libswscale. ${FFMPEG_HINT}]))
 fi
 
 

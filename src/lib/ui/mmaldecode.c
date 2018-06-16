@@ -18,9 +18,8 @@
 
 #define LOG_MODULE "mmaldecode"
 
-#include "../avbox.h"
-#include "../compiler.h"
-#include "player_p.h"
+#include <libavbox/avbox.h>
+#include <libavbox/ui/player_p.h>
 
 #define ENABLE_ZERO_COPY 1
 

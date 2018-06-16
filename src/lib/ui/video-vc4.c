@@ -12,11 +12,9 @@
 
 #define LOG_MODULE "video-vc4"
 
-#include "../debug.h"
-#include "../log.h"
-#include "../thread.h"
-#include "video-drv.h"
-#include "video-opengl.h"
+#include <libavbox/avbox.h>
+#include <libavbox/ui/video-drv.h>
+#include <libavbox/ui/video-opengl.h>
 
 
 /* VC4 driver */

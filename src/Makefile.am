@@ -143,10 +143,11 @@ libavbox_la_SOURCES += lib/ui/video-x11.c
 endif
 
 if ENABLE_VC4
-noinst_LIBRARIES += libvc4.a
-libvc4_a_SOURCES = lib/ui/video-vc4.c lib/ui/mmaldecode.c
-libvc4_a_CFLAGS = $(AM_CFLAGS) -std=gnu89
-mediabox_LDADD += $(AM_LDFLAGS) libvc4.a
+noinst_LTLIBRARIES += libvc4.la
+libvc4_la_SOURCES = lib/ui/video-vc4.c lib/ui/mmaldecode.c
+libvc4_la_CFLAGS = $(AM_CFLAGS) -std=gnu89
+libvc4_la_LDFLAGS = $(AM_LDFLAGS)
+libavbox_la_LIBADD += libvc4.la
 endif
 
 if WITH_SYSTEM_LIBTORRENT

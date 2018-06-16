@@ -16,7 +16,7 @@
 #endif
 
 #ifdef ENABLE_VC4
-#	include "video-vc4.h"
+#	include <libavbox/ui/video-vc4.h>
 #	include <GLES2/gl2ext.h>
 #endif
 

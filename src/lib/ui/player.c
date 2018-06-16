@@ -48,7 +48,7 @@
 #include <libavbox/ui/player_p.h>
 
 #ifdef ENABLE_MMAL
-#	include "mmaldecode.h"
+#	include <libavbox/ui/mmaldecode.h>
 #endif
 
 /* Define to log missed deadlines */
